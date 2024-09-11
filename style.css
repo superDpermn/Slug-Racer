@@ -1,0 +1,185 @@
+* {
+  margin: 0;
+  padding: 0;
+}
+
+main {
+  width: 100%;
+  height: 100%;
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #98b5b7;
+}
+
+div.points {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px;
+  font-size: 25px;
+  font-weight: 700;
+  width: fit-content;
+  z-index: 2;
+  display: grid;
+  grid-auto-flow: row;
+  justify-content: space-evenly;
+  align-items: center;
+}
+
+div.points > div {
+  grid-area: 1 / 1 / 1 / 1;
+}
+
+._bot {
+  color: rgb(255, 183, 59);
+}
+
+._plr {
+  color: rgb(0, 186, 239);
+}
+
+.endPrompt {
+  display: grid;
+  grid-auto-flow: row;
+  background-color: black;
+  width: fit-content;
+  height: fit-content;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-50%);
+  z-index: 3;
+  opacity: 0;
+  background-color: transparent;
+  transition: opacity 1s ease, background-color 1s ease;
+  pointer-events: none;
+  border-radius: 25px;
+  padding: 20px;
+  gap: 20px;
+}
+
+.endTitle {
+  text-align: center;
+  position: relative;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 500px;
+  height: fit-content;
+  border: 3px solid white;
+  background-color: black;
+  color: white;
+  font: 500 30px Arial;
+  border-radius: 10px;
+}
+
+.endTitle.win {
+  color: #9bec76;
+}
+
+.endTitle.lose {
+  color: #ed7171;
+}
+
+.endTitle.tie {
+  color: rgb(225, 212, 32);
+}
+
+.scoreDisplay {
+  text-align: center;
+  width: 500px;
+  height: fit-content;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font: 300 20px Arial;
+  color: white;
+  border-radius: 15px;
+}
+
+.replayButton {
+  width: 500px;
+  height: 150px;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 20px;
+  font: 500 30px Arial;
+  color: black;
+  background-color: rgba(255, 255, 255, 0.3);
+  border: 3px solid black;
+  border-radius: 15px;
+  transition: background-color 200ms ease;
+}
+.replayButton:hover {
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+.endPrompt.visible {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.5);
+  pointer-events: all;
+}
+
+.solo_container {
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  display: grid;
+  gap: 5px;
+  width: fit-content;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.collab_container {
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  padding: 10px;
+  border-radius: 15px;
+  display: grid;
+  gap: 10px;
+  width: fit-content;
+  grid-auto-flow: column;
+  align-items: center;
+  align-self: start;
+}
+
+.solo_container.visible,
+.collab_container.visible {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.team_score {
+  color: white;
+  text-align: center;
+  border: 3px solid white;
+  border-radius: 5px;
+  box-sizing: border-box;
+  padding: 15px;
+  height: fit-content;
+  font-family: Arial;
+  font-weight: 600;
+}
+
+div.score_text {
+  width: 100%;
+  text-align: center;
+  height: fit-content;
+  border-radius: 10px;
+  padding: 5px 10px;
+  box-sizing: border-box;
+}
