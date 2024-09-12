@@ -86,19 +86,22 @@ const growFactor = 10;
 const DEBUG = false;
 const MIN_TAIL_LENGTH = 20;
 const MAX_TAIL_LENGTH = 300;
+const TAIL_DENSITY = 3;
 const NAMETAG_HEIGHT = -30;
 const NAMETAG_OFFSET = 30;
 const MAX_TAG_CONTENT_LENGTH = 32;
 const COIN_ANIMATION_PARTICLE_COUNT = 10;
-const PARTICLE_DECAY_FACTOR = 0.05;
+const PARTICLE_DECAY_FACTOR = 0.12;
 const PARTICLE_FRICTION_FACTOR = 0.99;
 const COIN_FILL_COLOR = "rgb(249,219,61)";
 const MIN_PARTICLE_SIZE = 3;
 const particlesEnabled = true;
-const COLLISION_POWER = 1;
+const REFERENCE_MASS = 5;
+const MAX_SPEED_HARD_CAP = 12;
+const COLLISION_MIN = 1;
 const updateInterval = 15;
 
-let gameEnded = false;
+let gameEnded = true; // waits for the game selector menu before running
 
 function coinRandomizer() {
   return [
@@ -122,13 +125,27 @@ window.addEventListener("keyup", (e) => {
 });
 
 const DifficultySettings = {
-  botAcc: 0.05,
-  plrAcc: 0.075,
+  botAcc: 0.12,
+  plrAcc: 0.15,
+  botMaxSpd: 5,
+  get botSpeedLimit() {
+    return this.botMaxSpd;
+  },
+  set botSpeedLimit(value) {
+    this.botMaxSpd = value;
+  },
+  plrMaxSpd: 6,
+  get plrSpeedLimit() {
+    return this.plrMaxSpd;
+  },
+  set plrSpeedLimit(value) {
+    this.plrMaxSpd = value;
+  },
   W_a_M_CoinCount: 5,
   Collab_CoinCount: 2,
   Normal_CoinCount: 1,
   T_A_CoinCount: 1,
-  W_a_M_UpdateCD: <number>1500,
+  W_a_M_UpdateCD: <number>2000,
   T_A_GameTimerDuration: <number>60000,
 
   get botAcceleration(): number {
@@ -198,6 +215,8 @@ class Actor {
   color_alpha: string;
   borderColor_alpha: string;
   tagColor: string;
+  mass: number;
+  maxSpeed: number;
   constructor(id: string, team: number, color: string, borderColor: string) {
     this.x = Math.floor(
       Math.random() * (canvas.width - 2 * canvasMargin) + canvasMargin
@@ -211,13 +230,15 @@ class Actor {
     this.points = 0;
     this.r = defaultR;
     this.dir = 0;
-    this.angularAcc = 0.002;
+    this.angularAcc = 0.02;
     this.angularSpeed = 0;
     this.minSize = defaultMinSize;
     this.tailLength = MIN_TAIL_LENGTH;
     this.tongueOut = false;
     this.hAxis = 1;
     this.vAxis = 0;
+    this.mass = REFERENCE_MASS;
+    this.maxSpeed = 5;
     this.linearAcc = 0.1;
     this.history = [];
     this.team = team;
@@ -261,11 +282,18 @@ class Player extends Actor {
     inputBindings: string[],
     team: number,
     color: string,
-    borderColor: string
+    borderColor: string,
+    mass: number
   ) {
     super("plr_" + (++Player.memberCount).toString(), team, color, borderColor);
+    this.mass = mass;
     this.inputBindings = inputBindings;
-    this.linearAcc = DifficultySettings.playerAcceleration;
+    this.linearAcc =
+      DifficultySettings.playerAcceleration * ((REFERENCE_MASS * 2) / mass);
+    this.maxSpeed = Math.min(
+      DifficultySettings.plrSpeedLimit * ((REFERENCE_MASS * 3) / mass),
+      MAX_SPEED_HARD_CAP
+    );
     this.hAxis = 1;
     this.vAxis = 0;
     this.targetX = this.x + this.hAxis * coinDistance;
@@ -276,9 +304,15 @@ class Player extends Actor {
 
 class Bot extends Actor {
   static memberCount = 0;
-  constructor(team: number, color: string, borderColor: string) {
+  constructor(team: number, color: string, borderColor: string, mass: number) {
     super("bot_" + (++Bot.memberCount).toString(), team, color, borderColor);
-    this.linearAcc = DifficultySettings.botAcceleration;
+    this.mass = mass;
+    this.linearAcc =
+      DifficultySettings.botAcceleration * ((REFERENCE_MASS * 2) / mass);
+    this.maxSpeed = Math.min(
+      DifficultySettings.botSpeedLimit * ((REFERENCE_MASS * 3) / mass),
+      MAX_SPEED_HARD_CAP
+    );
     this.targetUpdate();
   }
 }
@@ -316,8 +350,8 @@ class CoinParticle {
   static minDistance: number = 5;
   static rVariation: number = 4;
   static minR: number = 5;
-  static speedVariation: number = 0.5;
-  static minSpeed: number = 0.2;
+  static speedVariation: number = 1.2;
+  static minSpeed: number = 0.48;
   r: number;
   x: number;
   y: number;
@@ -394,37 +428,6 @@ function updateCoin(obj: Coin, animated = false) {
   obj.data.y = myData[1];
 }
 
-window.addEventListener("resize", () => {
-  canvas.width =
-    window.innerWidth > 1200
-      ? window.innerWidth
-      : window.innerWidth > 1000
-      ? window.innerWidth * 1.2
-      : window.innerWidth > 800
-      ? window.innerWidth * 1.5
-      : window.innerWidth * 2;
-  canvas.height =
-    window.innerWidth > 1200
-      ? window.innerHeight
-      : window.innerWidth > 1000
-      ? window.innerHeight * 1.2
-      : window.innerWidth > 800
-      ? window.innerHeight * 1.5
-      : window.innerHeight * 2;
-  coinList.forEach((coin) => {
-    if (
-      !(
-        canvasMargin < coin.data.x && coin.data.x < canvas.width - canvasMargin
-      ) ||
-      !(
-        canvasMargin < coin.data.y && coin.data.y < canvas.height - canvasMargin
-      )
-    ) {
-      updateCoin(coin);
-    }
-  });
-});
-
 function endGame(
   actorIDList: string[],
   displayScore: number,
@@ -459,7 +462,7 @@ function endGame(
   scoreDisplay.innerText = "score: " + displayScore;
   gameOverPrompt.classList.add("visible");
   gameEnded = true;
-  update();
+  gameLoop();
 }
 
 type gameMode = "NORMAL" | "WHACK_A_MOLE" | "TIME_ATTACK" | "COLLAB";
@@ -532,11 +535,7 @@ const gameModeController = {
           true
         );
       } else {
-        endGame(
-          winners.map((winner) => winner.id),
-          bestScore,
-          false
-        );
+        endGame([], bestScore, false);
       }
     }, DifficultySettings.TimeLimit);
   },
@@ -623,7 +622,7 @@ function addScore(actor: Actor) {
   collabElement1.innerHTML = teamNames[0] + "<br/>points: " + score_a;
   collabElement2.innerHTML = teamNames[1] + "<br/>points: " + score_b;
 
-  let temp = bannerName(actor.id);
+  let temp = bannerName(actor.id).join(" ");
   actor.displayElement.innerText =
     temp.length < MAX_TAG_CONTENT_LENGTH
       ? temp + ": " + actor.points
@@ -654,13 +653,75 @@ function checkCollision(actor: Actor): boolean {
   return xDiff * xDiff + yDiff * yDiff < rSquared * rSquared;
 }
 
+type Vector = {
+  x: number;
+  y: number;
+};
+
+function magnitude(v: Vector): number {
+  return Math.hypot(v.x, v.y);
+}
+
+function normalizeVector(v: Vector): Vector {
+  const mag = Math.hypot(v.x, v.y);
+  return { x: v.x / mag, y: v.y / mag };
+}
+
+function dotProduct(v1: Vector, v2: Vector): number {
+  return v1.x * v2.x + v1.y * v2.y;
+}
+
+function getProjection(v1: Vector, v2: Vector): Vector {
+  const v2Unit = normalizeVector(v2);
+  const dp = dotProduct(v1, v2);
+  return { x: v2Unit.x * dp, y: v2Unit.y * dp };
+}
+
+function getNormalProjection(v1: Vector, v2: Vector): Vector {
+  return normalizeVector(getProjection(v1, v2));
+}
+
+function asAngle(v: Vector): number {
+  return Math.atan2(v.y, v.x);
+}
+
+function scaled(v: Vector, val: number): Vector {
+  return { x: v.x * val, y: v.y * val };
+}
+
+function RenderNoUpdate() {
+  botList.forEach((bot) => {
+    bot.history.forEach((e, i) => {
+      e[2] -= e[2] > bot.minSize ? decayFactor : 0;
+      if (i == bot.history.length - 1)
+        drawPart(e[0], e[1], e[2] + 10, bot.color, bot.borderColor);
+      else if (i % TAIL_DENSITY == 0)
+        drawPart(e[0], e[1], e[2], bot.color_alpha, bot.borderColor_alpha);
+    });
+    drawEyes(bot);
+  });
+
+  playerList.forEach((plr) => {
+    plr.history.forEach((e, i) => {
+      e[2] -= e[2] > plr.minSize ? decayFactor : 0;
+      if (i == plr.history.length - 1)
+        drawPart(e[0], e[1], e[2] + 10, plr.color, plr.borderColor);
+      else if (i % TAIL_DENSITY == 0)
+        drawPart(e[0], e[1], e[2], plr.color_alpha, plr.borderColor_alpha);
+    });
+    drawEyes(plr);
+  });
+}
+
 function updatePlayerData(
   actor: Player,
+  deltaTime: number,
   up = false,
   left = false,
   down = false,
   right = false
 ) {
+  const frameFraction: number = deltaTime / 17;
   if (actor.x > canvas.width - actor.r) {
     actor.vx = -Math.abs(actor.vx);
     actor.x -= 5;
@@ -702,19 +763,30 @@ function updatePlayerData(
     rotateDir -= Math.PI * 2;
   }
 
-  actor.dir += rotateDir / 10;
+  actor.dir += (rotateDir / 10) * frameFraction;
 
-  actor.vx += Math.cos(actor.dir) * actor.linearAcc;
-  actor.vy += Math.sin(actor.dir) * actor.linearAcc;
+  actor.vx += Math.cos(actor.dir) * actor.linearAcc * frameFraction;
+  actor.vy += Math.sin(actor.dir) * actor.linearAcc * frameFraction;
 
-  actor.vx *= 0.985;
-  actor.vy *= 0.985;
+  if (
+    Math.abs(actor.vx * actor.vx + actor.vy * actor.vy) >=
+    DifficultySettings.plrSpeedLimit * DifficultySettings.plrSpeedLimit
+  ) {
+    let tempVect: Vector = { x: actor.vx, y: actor.vy };
+    let finalVect: Vector = scaled(
+      normalizeVector(tempVect),
+      DifficultySettings.plrSpeedLimit
+    );
+    actor.vx = finalVect.x;
+    actor.vy = finalVect.y;
+  }
 
-  actor.x += actor.vx;
-  actor.y += actor.vy;
+  actor.x += actor.vx * frameFraction;
+  actor.y += actor.vy * frameFraction;
 }
 
-function updateBotData(actor: Bot): void {
+function updateBotData(actor: Bot, deltaTime: number): void {
+  const frameFraction: number = deltaTime / 17;
   if (actor.x > canvas.width - actor.r) {
     actor.vx = -Math.abs(actor.vx);
     actor.x -= 5;
@@ -738,26 +810,38 @@ function updateBotData(actor: Bot): void {
     );
     const rotateDir = angle - actor.dir;
     if (rotateDir > 0) {
-      if (actor.angularSpeed < 0) actor.angularSpeed += actor.angularAcc * 5;
-      else actor.angularSpeed += actor.angularAcc;
+      if (actor.angularSpeed < 0)
+        actor.angularSpeed += actor.angularAcc * 5 * frameFraction;
+      else actor.angularSpeed += actor.angularAcc * frameFraction;
     } else if (rotateDir < 0) {
-      if (actor.angularSpeed > 0) actor.angularSpeed -= actor.angularAcc * 5;
-      else actor.angularSpeed -= actor.angularAcc;
+      if (actor.angularSpeed > 0)
+        actor.angularSpeed -= actor.angularAcc * 5 * frameFraction;
+      else actor.angularSpeed -= actor.angularAcc * frameFraction;
     }
   }
 
-  actor.angularSpeed *= 0.985;
+  actor.angularSpeed -= actor.angularSpeed * 0.015 * frameFraction;
 
-  actor.dir += actor.angularSpeed;
+  actor.dir += actor.angularSpeed * frameFraction;
 
-  actor.vx += Math.cos(actor.dir) * actor.linearAcc;
-  actor.vy += Math.sin(actor.dir) * actor.linearAcc;
+  actor.vx += Math.cos(actor.dir) * actor.linearAcc * frameFraction;
+  actor.vy += Math.sin(actor.dir) * actor.linearAcc * frameFraction;
 
-  actor.vx *= 0.985;
-  actor.vy *= 0.985;
+  if (
+    Math.abs(actor.vx * actor.vx + actor.vy * actor.vy) >=
+    DifficultySettings.botSpeedLimit * DifficultySettings.botSpeedLimit
+  ) {
+    let tempVect: Vector = { x: actor.vx, y: actor.vy };
+    let finalVect: Vector = scaled(
+      normalizeVector(tempVect),
+      DifficultySettings.botSpeedLimit
+    );
+    actor.vx = finalVect.x;
+    actor.vy = finalVect.y;
+  }
 
-  actor.x += actor.vx;
-  actor.y += actor.vy;
+  actor.x += actor.vx * frameFraction;
+  actor.y += actor.vy * frameFraction;
 
   if (actor.target) {
     actor.tongueOut =
@@ -783,9 +867,6 @@ function drawPart(
 }
 
 function drawEyes(actor: Actor) {
-  const pointX = actor.x + Math.cos(actor.dir) * actor.r * 0.8;
-  const pointY = actor.y + Math.sin(actor.dir) * actor.r * 0.8;
-
   const pointX1 = actor.x + Math.cos(actor.dir + Math.PI / 4) * actor.r * 0.7;
   const pointY1 = actor.y + Math.sin(actor.dir + Math.PI / 4) * actor.r * 0.7;
 
@@ -801,24 +882,6 @@ function drawEyes(actor: Actor) {
     actor.x + Math.cos(actor.dir - Math.PI / 3 - 0.1) * actor.r * 0.62;
   const pointY21 =
     actor.y + Math.sin(actor.dir - Math.PI / 3 - 0.1) * actor.r * 0.62;
-
-  const pointX3 = actor.x + Math.cos(actor.dir + Math.PI) * actor.r * 0.8;
-  const pointY3 = actor.y + Math.sin(actor.dir + Math.PI) * actor.r * 0.8;
-  /*
-	ctx.lineWidth = 4;
-	ctx.strokeStyle = "black";
-	ctx.beginPath();
-	ctx.moveTo(pointX, pointY);
-	ctx.lineTo(pointX1, pointY1);
-	ctx.stroke();
-	ctx.moveTo(pointX, pointY);
-	ctx.lineTo(pointX2, pointY2);
-	ctx.stroke();
-	ctx.moveTo(pointX, pointY);
-	ctx.lineTo(pointX3, pointY3);
-	ctx.stroke();
-	ctx.closePath();
-	*/
 
   //TODO: ADD DYNAMIC TONGUE MODEL
 
@@ -902,29 +965,8 @@ function drawCoin(x: number, y: number, useShadow = true) {
 
 var frameCounter = 0;
 
-type Vector = {
-  x: number;
-  y: number;
-};
-
-function normalizeVector(v: Vector) {
-  const mag = Math.hypot(v.x, v.y);
-  return { x: v.x / mag, y: v.y / mag };
-}
-
-function getProjection(v1: Vector, v2: Vector): Vector {
-  const v2Unit = normalizeVector(v2);
-  const dp = v1.x * v2Unit.x + v1.y * v2Unit.y;
-  return { x: v2Unit.x * dp, y: v2Unit.y * dp };
-}
-
-function asAngle(v: Vector): number {
-  return Math.atan2(v.y, v.x);
-}
-
 function collisionResponse(a: Actor, b: Actor) {
   const relVector = <Vector>{ x: b.x - a.x, y: b.y - a.y };
-  const relNormal = normalizeVector(relVector);
   const relAngle = Math.atan2(relVector.y, relVector.x);
   const _unit1 = normalizeVector(relVector);
   const _unit2 = <Vector>{ x: -_unit1.x, y: -_unit1.y };
@@ -932,19 +974,27 @@ function collisionResponse(a: Actor, b: Actor) {
   const v2 = <Vector>{ x: b.vx, y: b.vy };
   const p1 = getProjection(v1, _unit1);
   const p2 = getProjection(v2, _unit2);
-  if (Math.round(Math.sin(asAngle(p1) - relAngle)) == 0) {
-    a.vx -= 2 * p1.x;
-    a.vy -= 2 * p1.y;
-    a.x += -relNormal.x * COLLISION_POWER;
-    a.y += -relNormal.y * COLLISION_POWER;
+  if (
+    Math.round(Math.sin(asAngle(p1) - relAngle)) == 0 ||
+    Math.round(Math.sin(asAngle(p2) + (Math.PI - relAngle))) == 0
+  ) {
+    // const sameDir = Math.round(Math.sin(asAngle(p1) - asAngle(p2))) == 0;
+    const aMod =
+      Math.round(Math.sin(Math.abs(a.dir - relAngle))) < Math.PI ? -1 : 1;
+    const bMod =
+      Math.round(Math.sin(Math.abs(b.dir - relAngle))) < Math.PI ? 1 : -1;
+
+    a.vx += (aMod * COLLISION_MIN * (p2.x * b.mass)) / a.mass;
+    a.vy += (aMod * COLLISION_MIN * (p2.y * b.mass)) / a.mass;
     a.dir = relAngle + Math.PI;
-  }
-  if (Math.round(Math.sin(asAngle(p2) - (relAngle - Math.PI))) == 0) {
-    b.vx -= 2 * p2.x;
-    b.vy -= 2 * p2.y;
-    b.x += relNormal.x * COLLISION_POWER;
-    b.y += relNormal.y * COLLISION_POWER;
+    a.x += Math.cos(a.dir) * 2;
+    a.y += Math.sin(a.dir) * 2;
+
+    b.vx += (bMod * COLLISION_MIN * (p1.x * a.mass)) / b.mass;
+    b.vy += (bMod * COLLISION_MIN * (p1.y * a.mass)) / b.mass;
     b.dir = relAngle;
+    b.x += Math.cos(b.dir) * 2;
+    b.y += Math.sin(b.dir) * 2;
   }
 }
 
@@ -955,9 +1005,7 @@ function manageCollisions() {
       else {
         const bot1 = botList[i];
         const bot2 = botList[j];
-        if (Math.hypot(bot1.x - bot2.x, bot1.y - bot2.y) > 2 * defaultR + 10) {
-          continue;
-        } else {
+        if (Math.hypot(bot1.x - bot2.x, bot1.y - bot2.y) <= 2 * defaultR + 20) {
           collisionResponse(bot1, bot2);
         }
       }
@@ -970,9 +1018,7 @@ function manageCollisions() {
       else {
         const plr1 = playerList[i];
         const plr2 = playerList[j];
-        if (Math.hypot(plr2.x - plr1.x, plr2.y - plr1.y) > 2 * defaultR) {
-          continue;
-        } else {
+        if (Math.hypot(plr2.x - plr1.x, plr2.y - plr1.y) <= 2 * defaultR + 20) {
           collisionResponse(plr1, plr2);
         }
       }
@@ -983,24 +1029,25 @@ function manageCollisions() {
     for (let j = 0; j < botList.length; j++) {
       const plr = playerList[i];
       const bot = botList[j];
-      if (Math.hypot(bot.x - plr.x, bot.y - plr.y) > 2 * defaultR) {
-        continue;
-      } else {
+      if (Math.hypot(bot.x - plr.x, bot.y - plr.y) <= 2 * defaultR + 20) {
         collisionResponse(plr, bot);
       }
     }
   }
 }
 
-function update() {
+let updateExtra: number = 0;
+
+function progressGameLogic(deltaTime: number): void {
   manageCollisions();
 
   botList.forEach((bot) => {
-    updateBotData(bot);
+    updateBotData(bot, deltaTime);
   });
   playerList.forEach((plr) => {
     updatePlayerData(
       plr,
+      deltaTime,
       ...plr.inputBindings.map((key) => pressedKeys.has(key))
     );
   });
@@ -1021,42 +1068,20 @@ function update() {
     else plr.history.push([plr.x, plr.y, plr.r]);
   });
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  playerList.forEach((plr) => {
+    if (checkCollision(plr)) {
+      addScore(plr);
+    }
+  });
 
   botList.forEach((bot) => {
-    bot.history.forEach((e, i) => {
-      e[2] -= e[2] > bot.minSize ? decayFactor : 0;
-      if (i == bot.history.length - 1)
-        drawPart(e[0], e[1], e[2] + 10, bot.color, bot.borderColor);
-      else if (i % 5 == 0)
-        drawPart(e[0], e[1], e[2], bot.color_alpha, bot.borderColor_alpha);
-    });
-    drawEyes(bot);
-    if (checkCollision(bot)) addScore(bot);
+    if (checkCollision(bot)) {
+      addScore(bot);
+    }
   });
+}
 
-  playerList.forEach((plr) => {
-    plr.history.forEach((e, i) => {
-      e[2] -= e[2] > plr.minSize ? decayFactor : 0;
-      if (i == plr.history.length - 1)
-        drawPart(e[0], e[1], e[2] + 10, plr.color, plr.borderColor);
-      else if (i % 5 == 0)
-        drawPart(e[0], e[1], e[2], plr.color_alpha, plr.borderColor_alpha);
-    });
-    drawEyes(plr);
-    if (checkCollision(plr)) addScore(plr);
-  });
-
-  if (DEBUG)
-    coinHistory.forEach((e) => {
-      drawCoin(e[0], e[1], true);
-    });
-
-  coinList.forEach((coin) => {
-    drawCoin(coin.data.x, coin.data.y, false);
-  });
-  if (particlesEnabled) updateCoinParticles();
-
+function update(deltaTime: number) {
   if (++frameCounter >= updateInterval) {
     frameCounter = 0;
     playerList.forEach((plr) => {
@@ -1067,7 +1092,34 @@ function update() {
     });
   }
 
-  if (!gameEnded) requestAnimationFrame(update);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  progressGameLogic(deltaTime);
+
+  if (DEBUG)
+    coinHistory.forEach((e) => {
+      drawCoin(e[0], e[1], true);
+    });
+
+  coinList.forEach((coin) => {
+    drawCoin(coin.data.x, coin.data.y, false);
+  });
+  if (particlesEnabled) updateCoinParticles();
+}
+
+let millisecondsPassed: number = 0;
+let oldTimeStamp: number = 0;
+
+function gameLoop(timeStamp: number = 0) {
+  millisecondsPassed = timeStamp - oldTimeStamp;
+  oldTimeStamp = timeStamp;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  update(Math.max(Math.min(millisecondsPassed, 200), 8));
+  RenderNoUpdate();
+
+  if (!gameEnded) requestAnimationFrame(gameLoop);
 }
 
 function resetGame() {
@@ -1077,7 +1129,7 @@ function resetGame() {
     plr.points = 0;
     plr.tailLength = MIN_TAIL_LENGTH;
     plr.history = plr.history.slice(plr.history.length - plr.tailLength);
-    let temp = bannerName(plr.id);
+    let temp = bannerName(plr.id).join(" ");
     plr.displayElement.innerText =
       temp.length < MAX_TAG_CONTENT_LENGTH
         ? temp + ": 0"
@@ -1088,15 +1140,16 @@ function resetGame() {
     bot.points = 0;
     bot.tailLength = MIN_TAIL_LENGTH;
     bot.history = bot.history.slice(bot.history.length - bot.tailLength);
-    let temp = bannerName(bot.id);
+    let temp = bannerName(bot.id).join(" ");
     bot.displayElement.innerText =
       temp.length < MAX_TAG_CONTENT_LENGTH
         ? temp + ": 0"
         : temp.slice(0, MAX_TAG_CONTENT_LENGTH - 2) + "..: 0";
   });
-  gameModeController.setGameMode(gameModeVariables.selectedMode);
-  gameEnded = false;
-  update();
+  gameModeController.resetSettings();
+  // gameEnded = true; //change when adding end game settings break
+  // update();
+  start();
 }
 
 replayButton.onclick = resetGame;
@@ -1105,6 +1158,7 @@ function addActor(
   isBot: boolean,
   name: string,
   team: number,
+  mass?: number,
   color?: string,
   borderColor?: string,
   inputBindings?: string[]
@@ -1125,9 +1179,12 @@ function addActor(
     tempColor = colorSet[0];
     tempBorder = colorSet[1];
   }
+  let tempMass: number;
+  if (mass) tempMass = Math.max(mass, REFERENCE_MASS);
+  else tempMass = REFERENCE_MASS;
   if (isBot) {
     botNames.push(name);
-    const myActor = new Bot(team, tempColor, tempBorder);
+    const myActor = new Bot(team, tempColor, tempBorder, tempMass);
     botList.push(myActor);
     if (team === 1) {
       Team_A.push(myActor);
@@ -1136,7 +1193,13 @@ function addActor(
     }
   } else if (inputBindings) {
     playerNames.push(name);
-    const myActor = new Player(inputBindings, team, tempColor, tempBorder);
+    const myActor = new Player(
+      inputBindings,
+      team,
+      tempColor,
+      tempBorder,
+      tempMass
+    );
     playerList.push(myActor);
     if (team === 1) {
       Team_A.push(myActor);
@@ -1153,6 +1216,7 @@ type ActorTicket =
       isBot: true;
       name: string;
       team: number;
+      mass?: number;
       color?: string;
       borderColor?: string;
       inputBindings?: string[] | undefined;
@@ -1161,6 +1225,7 @@ type ActorTicket =
       isBot: false;
       name: string;
       team: number;
+      mass?: number;
       color?: string;
       borderColor?: string;
       inputBindings: string[];
@@ -1172,6 +1237,7 @@ function Ticketify(
   isBot: boolean,
   name: string,
   team: number,
+  mass?: number,
   color?: string,
   borderColor?: string,
   inputBindings?: string[]
@@ -1180,31 +1246,84 @@ function Ticketify(
     isBot: isBot,
     name: name,
     team: team,
+    mass: mass,
     inputBindings: inputBindings,
     color: color,
     borderColor: borderColor,
   });
 }
 
-Ticketify(true, "asimov", 1);
-Ticketify(true, "tesla", 1);
-Ticketify(true, "atlas", 2);
-Ticketify(true, "spark", 2);
-//["w","a","s","d"]
+// Ticketify(true, "asimov", 1, 10);
+Ticketify(true, "Tesla", 1);
+Ticketify(true, "Atlas", 2);
+Ticketify(false, "Beta_Tester 2", 2, undefined, undefined, undefined, [
+  "ArrowUp",
+  "ArrowLeft",
+  "ArrowDown",
+  "ArrowRight",
+]);
+Ticketify(false, "Beta_Tester 1", 1, undefined, undefined, undefined, [
+  "w",
+  "a",
+  "s",
+  "d",
+]);
 
 function init(): void {
   while (TicketList.length > 0) {
     const t = TicketList.pop()!;
-    addActor(t.isBot, t.name, t.team, t.color, t.borderColor, t.inputBindings);
+    addActor(
+      t.isBot,
+      t.name,
+      t.team,
+      t.mass,
+      t.color,
+      t.borderColor,
+      t.inputBindings
+    );
   }
+  gameEnded = true;
+  // gameLoop();
+  start();
 }
 
 function start(): void {
   gameModeController.setGameMode(gameModeVariables.selectedMode);
-  update();
+  gameEnded = false;
+  gameLoop();
 }
 
-init();
-start();
+window.addEventListener("resize", () => {
+  canvas.width =
+    window.innerWidth > 1200
+      ? window.innerWidth
+      : window.innerWidth > 1000
+      ? window.innerWidth * 1.2
+      : window.innerWidth > 800
+      ? window.innerWidth * 1.5
+      : window.innerWidth * 2;
+  canvas.height =
+    window.innerWidth > 1200
+      ? window.innerHeight
+      : window.innerWidth > 1000
+      ? window.innerHeight * 1.2
+      : window.innerWidth > 800
+      ? window.innerHeight * 1.5
+      : window.innerHeight * 2;
+  coinList.forEach((coin) => {
+    if (
+      !(
+        canvasMargin < coin.data.x && coin.data.x < canvas.width - canvasMargin
+      ) ||
+      !(
+        canvasMargin < coin.data.y && coin.data.y < canvas.height - canvasMargin
+      )
+    ) {
+      updateCoin(coin);
+    }
+  });
+  RenderNoUpdate();
+});
 
-//endGame("plr_1", playerList[0].points, true); //FOR DEBUGGING
+//PROGRAM START CALL (DO NOT REMOVE)
+init();

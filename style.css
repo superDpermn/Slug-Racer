@@ -14,7 +14,7 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #98b5b7;
+  background-color: #2e3440;
 }
 
 div.points {
@@ -31,6 +31,8 @@ div.points {
   grid-auto-flow: row;
   justify-content: space-evenly;
   align-items: center;
+  font-family: Arial;
+  font-weight: 500;
 }
 
 div.points > div {
@@ -58,7 +60,7 @@ div.points > div {
   z-index: 3;
   opacity: 0;
   background-color: transparent;
-  transition: opacity 1s ease, background-color 1s ease;
+  transition: opacity 400ms ease;
   pointer-events: none;
   border-radius: 25px;
   padding: 20px;
@@ -171,8 +173,6 @@ div.points > div {
   box-sizing: border-box;
   padding: 15px;
   height: fit-content;
-  font-family: Arial;
-  font-weight: 600;
 }
 
 div.score_text {
